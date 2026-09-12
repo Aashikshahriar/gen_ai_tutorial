@@ -32,7 +32,7 @@ N_TRAJECTORIES = 5
 X_RANGE = (-5, 5)
 N_X = 300
 
-rng = np.random.default_rng(0)
+rng = np.random.default_rng(11)
 
 betas = np.linspace(BETA_1, BETA_T, T)          # beta_i, i = 1..T (index i-1)
 alphas = 1.0 - betas
@@ -94,7 +94,6 @@ def run():
     for j in range(N_TRAJECTORIES):
         ax.plot(np.arange(T + 1), traj[:, j], color=colors[j % len(colors)], linewidth=1)
 
-    ax.invert_yaxis()
     ax.set_ylim(5, -5)
     ax.set_xlabel("reverse iteration")
     ax.set_ylabel("x")

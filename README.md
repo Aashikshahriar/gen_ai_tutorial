@@ -31,7 +31,7 @@ uses it) to a local `./data/` on first run, from `storage.googleapis.com/cvdf-da
 
 ## `vae/` — Variational Autoencoder
 
-Implements the ELBO objective from **Theorem 1.4** directly:
+Implements the ELBO objective from VAE paper directly:
 
 ```
 ELBO_{phi,theta}(x) = - (1/M) sum_m ||x - f_theta(mu_phi(x) + sigma_phi(x) eps^(m))||^2 / (2 sigma_dec^2)
