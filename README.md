@@ -6,10 +6,14 @@ subfolder with its own `train.py`. Shared Python environment at `./venv`.
 ```
 gen_AI/
 ├── venv/                   # shared virtualenv (torch, torchvision, matplotlib, numpy, tqdm)
-├── vae/                    # Variational Autoencoder (Theorem 1.4's ELBO)
+├── vae/                    # Variational Autoencoder (VAE ELBO)
 ├── diffusion_forward/      # forward-diffusion visualizations (no training) — Example 2.1 / Fig 2.5, Fig 2.7
 ├── ddpm/                   # DDPM, x0-prediction denoiser
-└── ddpm_eps_pred/          # DDPM, noise (epsilon)-prediction denoiser
+├── ddpm_eps_pred/          # DDPM, noise (epsilon)-prediction denoiser
+├── langevin_dynamics/      # Langevin/score-based sampling from known densities — Example 3.3 / Fig 3.4, Fig 3.6, SGLD comparison
+├── sde_diffusion/          # forward/reverse SDE view of diffusion (VP-SDE = DDPM, VE-SDE = SMLD) — Sec 4.3, Example 4.7
+├── brownian_motion/        # physical derivation underlying diffusion models — Langevin equation (Sec 5.1)
+└── fokker_planck/          # Fokker-Planck PDE solved directly via finite differences (Sec 5.1)
 ```
 
 ## Setup
@@ -156,3 +160,92 @@ python train.py --epochs 20 --batch_size 128 --T 300
 ```
 
 Outputs land in `ddpm_eps_pred/outputs/` (same set as `ddpm/`, checkpoint named `ddpm_eps_mnist.pt`).
+
+---
+
+## `langevin_dynamics/` — score-based sampling
+
+No neural network — samples from known 1D/2D densities using their closed-form score
+`grad_x log p(x)`, and compares Langevin-family samplers.
+
+- `gmm_langevin.py` — replicates **Figure 3.4** (Example 3.3): `M=10000` particles initialized
+  uniformly on `[-3,3]`, evolved by the Langevin update
+  `x_{t+1} = x_t + (eta/2) grad_x log p(x_t) + sqrt(eta) z_t`, converging to the target 1D GMM.
+  Output: `langevin_samples.pdf`.
+- `sgld_comparison.py` — replicates **Remark 1**: compares **SGD**, full-batch **Langevin
+  Dynamics**, and **SG Langevin Dynamics (SGLD)** on a toy conjugate-Gaussian Bayesian
+  posterior (closed-form ground truth), showing SGD collapses to a point (MAP) estimate while
+  (SG)LD produce samples spanning the true posterior. Output: `sgld_comparison.png`.
+- `score_field_trajectories.py` — replicates **Figure 3.6**: contour map of `log p(x)` for a
+  2D GMM with the score vector field overlaid, plus two sample trajectories following
+  deterministic gradient ascent `x_{t+1} = x_t + eta * grad_x log p(x_t)` up to a mode.
+  Output: `score_field_trajectories.pdf`.
+
+```bash
+cd langevin_dynamics
+python gmm_langevin.py
+python sgld_comparison.py
+python score_field_trajectories.py
+```
+
+---
+
+## `sde_diffusion/` — forward/reverse SDE view of diffusion
+
+Connects DDPM and SMLD as discretizations of the general forward SDE `dx = f(x,t) dt + g(t) dw`
+(Definition 4.1), using the same 1D GMM as `diffusion_forward/` so every marginal has a known
+closed form and the *true* (not learned) score can be used throughout.
+
+- `forward_sde.py` — **VP-SDE** (`f=-0.5 beta(t) x`, `g=sqrt(beta(t))`), the continuous-time
+  limit of DDPM. Euler-Maruyama simulation checked against the closed-form marginal at
+  `t = 0, 0.05, 0.15, 0.3, 1.0`. Output: `forward_sde.png`.
+- `reverse_sde.py` — replicates **Figure 4.6 / Example 4.7**: the reverse SDE
+  `x_{i-1} = (1/sqrt(1-beta_i))[x_i + (beta_i/2) grad_x log p_i(x_i)] + sqrt(beta_i) z_i`, run
+  from `x_T ~ N(0,I)` back to `x_0`, using the true analytic score at every step. Heatmap of the
+  true marginal with a few sample trajectories overlaid. Output: `reverse_sde.png`.
+- `smld_forward.py` — **VE-SDE** (`f=0`, `g(t)=sqrt(d[sigma(t)^2]/dt)`, Theorem 4.3), the
+  continuous-time limit of SMLD/NCSN: noise only ever broadens each mixture component's
+  variance, means/weights untouched. Output: `smld_forward.png`.
+- `smld_reverse.py` — **Theorem 4.4**'s reverse VE-SDE, discretized as annealed Langevin
+  dynamics, starting from `x_L ~ N(0, sigma_max^2)`. Output: `smld_reverse.png`.
+
+```bash
+cd sde_diffusion
+python forward_sde.py
+python reverse_sde.py
+python smld_forward.py
+python smld_reverse.py
+```
+
+---
+
+## `brownian_motion/` — Langevin equation and the Fokker-Planck equation
+
+The physics underneath diffusion models (Sec. 5.1): a particle's velocity under friction plus a
+random molecular-bombardment force, `v_dot + gamma v = Gamma(t)`, and the PDE that governs its
+probability density directly (no sampling).
+
+- `langevin_simulation.py` — Euler-Maruyama simulation of the Langevin equation. Validates,
+  against simulation, three closed forms: stationary velocity variance `q/(2 gamma)`, the
+  exponential velocity autocorrelation `(q/2 gamma) e^{-gamma|tau|}`, and Einstein's linear
+  mean-squared-displacement relation `E[x(t)^2] ~ 2Dt`. Output: `langevin_simulation.png`.
+
+```bash
+cd brownian_motion
+python langevin_simulation.py
+```
+
+---
+
+## `fokker_planck/` — solving the Fokker-Planck PDE directly
+
+- `fokker_planck_ou.py` — solves `dp(v,t)/dt = -d/dv[f(v)p] + 0.5 q d^2p/dv^2` (the Fokker-Planck
+  equation for the Langevin/OU velocity process above) via explicit finite differences, with no
+  particle sampling at all. Checked side-by-side against SDE Monte Carlo and the analytic OU
+  transition density at `t = 0, 0.25, 0.5, 1.0, 3.0` -- three independent descriptions of the
+  same process, in near-exact agreement. Output: `fokker_planck_ou.png`.
+
+```bash
+cd fokker_planck
+python fokker_planck_ou.py
+```
